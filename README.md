@@ -35,7 +35,7 @@ guitar → [listen]  pitch spectrum (16k FFT) → note peaks → overtone suppre
 | `js/midi.js` | MIDI foot control with learn |
 | `js/main.js` | Wiring and display |
 
-No build step and no dependencies. Run the tests with `node --test tests/`.
+No build step and no dependencies. Run the tests with `npm test`.
 
 ## Roadmap
 
