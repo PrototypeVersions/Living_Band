@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { analyzeSpectrum, matchChord, ChordTracker, voiceLead, midiToFreq } from '../js/dsp.js';
 import { Conductor } from '../js/conductor.js';
 
-const SR = 48000, N = 16384;
+const SR = 48000, N = Number(process.env.FFT_N || 16384);
 
 function fftMag(x) {
   const n = x.length, re = Float64Array.from(x), im = new Float64Array(n);
@@ -92,7 +92,7 @@ test('tracker waits a few frames before changing chord, then changes', () => {
   assert.equal(tr.current.label, 'Em');
   tr.update(c, true, 0.4);
   assert.equal(tr.current.label, 'Em', 'should not jump on one frame');
-  for (let i = 0; i < 12; i++) tr.update(c, true, 0.43 + i * 0.03);
+  for (let i = 0; i < 80; i++) tr.update(c, true, 0.43 + i * 0.03);
   assert.equal(tr.current.label, 'C');
 });
 

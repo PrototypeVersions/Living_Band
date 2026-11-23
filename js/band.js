@@ -86,7 +86,7 @@ export class Band {
     this.pcs = chord.pcs;
     this.voiceNotes = voiceLead(this.voiceNotes, chord.pcs, 48, 76);
     this.voiceNotes.forEach((m, i) => {
-      for (const o of this.voices[i].oscs) o.frequency.setTargetAtTime(midiToFreq(m), t, 0.25);
+      for (const o of this.voices[i].oscs) o.frequency.setTargetAtTime(midiToFreq(m), t, 0.035);
     });
     // Bass: root, placed between A1 and G#2, with a soft re-attack.
     let b = 33 + ((chord.root - 33) % 12 + 12) % 12;

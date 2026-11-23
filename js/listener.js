@@ -1,7 +1,7 @@
 // Living Band — audio input: device and channel selection, analysis taps, and a built-in demo guitar.
 import { midiToFreq } from './dsp.js';
 
-export const PITCH_FFT = 16384;  // fine frequency detail for chords (about a third of a second)
+export const PITCH_FFT = 8192;   // frequency detail for chords (~170 ms window: a balance of detail and speed)
 export const ONSET_FFT = 2048;   // fast detail for note attacks and level
 
 export class Listener {
@@ -124,7 +124,13 @@ export class Listener {
       [43, 47, 50, 55, 59, 67],
       [50, 57, 62, 66],
     ];
+    const ringing = [];
     const strum = (notes, at) => {
+      // A new strum replaces the old notes on those strings (they get damped), like a real guitar.
+      while (ringing.length) {
+        const old = ringing.pop();
+        if (old.end > at) { old.g.gain.cancelScheduledValues(at); old.g.gain.setTargetAtTime(0, at, 0.03); }
+      }
       notes.forEach((m, i) => {
         const t = at + i * 0.018;
         const o = ctx.createOscillator(); o.setPeriodicWave(wave); o.frequency.value = midiToFreq(m);
@@ -133,17 +139,20 @@ export class Listener {
         g.gain.linearRampToValueAtTime(0.09, t + 0.005);
         g.gain.exponentialRampToValueAtTime(0.002, t + 3.6);
         o.connect(g).connect(bus); o.start(t); o.stop(t + 3.7);
+        ringing.push({ g, end: t + 3.7 });
       });
     };
     const barSeconds = 4;
     let next = ctx.currentTime + 0.1;
     let step = 0;
+    this.demoEvents = []; // chord-change times, for measuring how fast the band reacts
     const cycle = chords.length * 2 + 4; // 2 bars per chord, then 4 bars of silence
     const schedule = () => {
       while (next < ctx.currentTime + 1.0) {
         const pos = step % cycle;
         if (pos < chords.length * 2) {
           const ch = chords[Math.floor(pos / 2)];
+          if (pos % 2 === 0) this.demoEvents.push({ t: next, chord: Math.floor(pos / 2) });
           strum(ch, next);
           strum(ch, next + barSeconds / 2);
         }

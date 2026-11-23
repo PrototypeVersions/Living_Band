@@ -1,5 +1,5 @@
 // Living Band — wiring: audio start-up, the listen → decide → play loop, and the page controls.
-import { analyzeSpectrum, ChordTracker, OnsetDetector, NOTE_NAMES, midiName } from './dsp.js';
+import { analyzeSpectrum, newEnergy, ChordTracker, OnsetDetector, NOTE_NAMES, midiName } from './dsp.js';
 import { Conductor, PERSONALITIES } from './conductor.js';
 import { Band } from './band.js';
 import { Listener, PITCH_FFT } from './listener.js';
@@ -13,8 +13,10 @@ const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.strin
 
 let ctx, listener, band, conductor, tracker, onsets, midi;
 let playing = false, belowSince = 0, lastTick = 0, lastFrame = null;
+let prevPitch = null, strikeBefore = null;
 const state = { chord: null, decision: null, levelDb: -100, density: 0, playing: false };
 window.livingBand = state; // handy for debugging in the console
+state.changes = []; // {t, heard, band} each time the heard or played chord changes
 
 // ---------- Personality select ----------
 for (const [key, p] of Object.entries(PERSONALITIES)) {
@@ -220,7 +222,7 @@ function tick() {
 
   const { pitchMag, onsetMag, levelDb } = listener.read();
   const gateOpen = levelDb > settings.gate;
-  onsets.update(onsetMag, now, gateOpen);
+  const isOnset = onsets.update(onsetMag, now, gateOpen);
 
   // Playing, with a little hysteresis so sustained notes don't flicker in and out.
   if (gateOpen) { playing = true; belowSince = 0; }
@@ -230,10 +232,24 @@ function tick() {
 
   const frame = analyzeSpectrum(pitchMag, ctx.sampleRate, PITCH_FFT);
   lastFrame = frame;
-  const chord = tracker.update(frame, playing, now);
+  // On a strum, remember what the spectrum looked like just before it, so we can hear only what's new.
+  if (isOnset && prevPitch) { strikeBefore = prevPitch.slice(); tracker.strike(now); }
+  const fresh = strikeBefore && tracker.strikeAt !== null
+    ? analyzeSpectrum(newEnergy(pitchMag, strikeBefore), ctx.sampleRate, PITCH_FFT) : null;
+  if (tracker.strikeAt === null) strikeBefore = null;
+  const chord = tracker.update(frame, playing, now, fresh);
+  if (!prevPitch) prevPitch = new Float32Array(pitchMag.length);
+  prevPitch.set(pitchMag);
   const decision = conductor.update({ now, playing, chord, density: onsets.density() });
   band.apply(decision, conductor.p, dt);
 
+  const heardLabel = chord && chord.label, bandLabel = band.chordLabel;
+  if (heardLabel !== state.lastHeard || bandLabel !== state.lastBand) {
+    state.changes.push({ t: now, heard: heardLabel, band: bandLabel });
+    if (state.changes.length > 200) state.changes.shift();
+    state.lastHeard = heardLabel; state.lastBand = bandLabel;
+  }
+  state.demoEvents = listener.demoEvents; state.tracker = tracker;
   Object.assign(state, { chord, decision, levelDb, density: onsets.density(), playing, engagement: conductor.engagement });
   render(frame, chord, decision, levelDb);
 }

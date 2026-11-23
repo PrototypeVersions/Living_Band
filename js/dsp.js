@@ -113,24 +113,92 @@ export function matchChord(chroma, bassPc = -1) {
   return best;
 }
 
-/** Smooths chroma over time and only changes chord when a new one is clearly and stably better. */
+/**
+ * Spectrum of what is *new* since `before`: energy that rose. Old chords and reverb tails, which are
+ * fading, drop out, leaving mostly the notes just struck.
+ */
+export function newEnergy(now, before, keep = 1.2) {
+  const out = new Float32Array(now.length);
+  for (let i = 0; i < now.length; i++) {
+    const d = now[i] - keep * before[i];
+    out[i] = d > 0 ? d : 0;
+  }
+  return out;
+}
+
+/**
+ * Follows the chord being played.
+ * Two paths: a fast one right after a strum (looks only at newly struck notes), and a slow smoothed
+ * one for everything else (picks up gradual changes, single notes added over time, etc.).
+ */
 export class ChordTracker {
-  constructor({ alpha = 0.3, holdFrames = 4, switchMargin = 0.03, minScore = 0.8 } = {}) {
-    Object.assign(this, { alpha, holdFrames, switchMargin, minScore });
+  constructor({ alpha = 0.4, holdFrames = 10, switchMargin = 0.05, minScore = 0.8, settleSec = 1.2,
+    strikeWindow = [0.06, 0.45], freshFrames = 2, strikeMargin = 0.08 } = {}) {
+    Object.assign(this, { alpha, holdFrames, switchMargin, minScore, settleSec, strikeWindow, freshFrames, strikeMargin });
     this.smooth = new Float32Array(12);
     this.current = null;
     this.candidate = null;
     this.candidateCount = 0;
     this.changedAt = 0;
+    this.strikeAt = null;
   }
 
-  update(frame, playing, now = 0) {
+  /** Call on every detected note attack (strum or pick). */
+  strike(now) {
+    this.strikeAt = now;
+    this.lastStrike = now;
+    this.freshCand = null;
+    this.freshCount = 0;
+  }
+
+  /**
+   * frame: analysis of the full spectrum; fresh: analysis of newEnergy() since just before the
+   * last strike (or null). Returns the current chord (or null).
+   */
+  update(frame, playing, now = 0, fresh = null) {
     if (!playing) {
       for (let i = 0; i < 12; i++) this.smooth[i] *= 0.9;
-      this.candidate = null; this.candidateCount = 0;
+      this.candidate = null; this.candidateCount = 0; this.strikeAt = null;
       return this.current;
     }
     const n = normalize(frame.chroma);
+
+    // ---- Fast path: just after a strike, judge from the newly struck notes.
+    const since = this.strikeAt === null ? Infinity : now - this.strikeAt;
+    if (fresh && since >= this.strikeWindow[0] && since <= this.strikeWindow[1]) {
+      const fn = normalize(fresh.chroma);
+      const mix = new Float32Array(12);
+      for (let i = 0; i < 12; i++) mix[i] = n[i] + 0.5 * fn[i];
+      const bass = frame.bassPc >= 0 ? frame.bassPc : fresh.bassPc;
+      const fb = matchChord(mix, bass);
+      // Re-strumming the same chord: if the current chord still explains the new notes nearly as well,
+      // keep it. Only switch when the new chord is clearly better.
+      if (this.current && fb.label !== this.current.label &&
+          fb.score < scoreChord(normalize(mix), this.current.root, this.current.quality, bass) + this.strikeMargin) {
+        this.strikeAt = null;
+        return this.current;
+      }
+      if (fb.score >= this.minScore) {
+        if (this.freshCand && this.freshCand.label === fb.label) this.freshCount++;
+        else { this.freshCand = fb; this.freshCount = 1; }
+        // Two-note "power chord" readings need more evidence: a half-heard strum often looks like one.
+        const need = fb.quality.iv.length === 2 ? this.freshFrames + 2 : this.freshFrames;
+        if (this.freshCount >= need) {
+          if (!this.current || this.current.label !== fb.label) {
+            this.current = fb; this.changedAt = now;
+            (this.log ||= []).push({ now, path: 'fast', label: fb.label, mix: [...mix].map((x) => +x.toFixed(2)) });
+          }
+          else this.current.score = fb.score;
+          this.smooth = normalize(mix);
+          this.strikeAt = null; this.candidate = null; this.candidateCount = 0;
+          return this.current;
+        }
+      }
+    } else if (since > this.strikeWindow[1]) {
+      this.strikeAt = null;
+    }
+
+    // ---- Slow path: smoothed chroma with hysteresis.
     for (let i = 0; i < 12; i++) this.smooth[i] = this.alpha * n[i] + (1 - this.alpha) * this.smooth[i];
     const best = matchChord(this.smooth, frame.bassPc);
     this.lastBest = best;
@@ -145,10 +213,15 @@ export class ChordTracker {
       ? scoreChord(normalize(this.smooth), this.current.root, this.current.quality, frame.bassPc) : -1;
     if (best.score < curScore + this.switchMargin) { this.candidate = null; this.candidateCount = 0; return this.current; }
 
+    // Strums are the fast path's job. The slow path only handles changes with no clear strum
+    // (arpeggios, swells, volume-knob fades), and lets ring-out fade after any change.
+    if (this.current && (now - this.changedAt < this.settleSec || now - (this.lastStrike ?? -Infinity) < this.settleSec)) { this.candidate = null; this.candidateCount = 0; return this.current; }
     if (this.candidate && this.candidate.label === best.label) this.candidateCount++;
     else { this.candidate = best; this.candidateCount = 1; }
     if (this.candidateCount >= this.holdFrames) {
       this.current = best; this.changedAt = now;
+      (this.log ||= []).push({ now, path: 'slow', label: best.label, mix: [...this.smooth].map((x) => +x.toFixed(2)) });
+      if (this.log.length > 100) this.log.shift();
       this.candidate = null; this.candidateCount = 0;
     }
     return this.current;
