@@ -79,23 +79,98 @@ export class Band {
 
   setVolume(v) { this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05); }
 
-  setChord(chord) {
+  /** Move the pad (and bass, unless the groove is driving it) to a chord, now or at time `at`. */
+  setChord(chord, at = null, { bass = true } = {}) {
     if (!chord || chord.label === this.chordLabel) return;
-    const t = this.ctx.currentTime;
+    const t = Math.max(at ?? 0, this.ctx.currentTime);
     this.chordLabel = chord.label;
     this.pcs = chord.pcs;
     this.voiceNotes = voiceLead(this.voiceNotes, chord.pcs, 48, 76);
     this.voiceNotes.forEach((m, i) => {
       for (const o of this.voices[i].oscs) o.frequency.setTargetAtTime(midiToFreq(m), t, 0.035);
     });
-    // Bass: root, placed between A1 and G#2, with a soft re-attack.
-    let b = 33 + ((chord.root - 33) % 12 + 12) % 12;
-    this.bassMidi = b;
-    for (const o of this.bassOscs) o.frequency.setTargetAtTime(midiToFreq(b), t, 0.03);
+    this.root = chord.root;
+    if (bass) this.bassNote(Band.bassMidiFor(chord.root), t, 1.0, null);
+  }
+
+  /** Root placed between A1 and G#2. */
+  static bassMidiFor(pc, offset = 0) { return 33 + ((pc + offset - 33) % 12 + 12) % 12; }
+
+  /** Bass note at time t. sustain = seconds before it fades a little, or null to hold. */
+  bassNote(midi, t, vel = 1, sustain = null) {
+    this.bassMidi = midi;
+    for (const o of this.bassOscs) o.frequency.setTargetAtTime(midiToFreq(midi), t, 0.012);
     const env = this.bassEnv.gain;
     env.cancelScheduledValues(t);
-    env.setTargetAtTime(0.25, t, 0.03);
-    env.setTargetAtTime(1.0, t + 0.12, 0.15);
+    env.setTargetAtTime(0.15, t, 0.008);
+    env.setTargetAtTime(vel, t + 0.02, 0.02);
+    if (sustain !== null) env.setTargetAtTime(vel * 0.45, t + sustain, 0.15);
+  }
+
+  // ---------- Drums (synthesized) ----------
+  initDrums() {
+    if (this.drumBus) return;
+    const ctx = this.ctx;
+    this.drumBus = ctx.createGain(); this.drumBus.gain.value = 0;
+    this.drumBus.connect(this.master);
+    const send = ctx.createGain(); send.gain.value = 0.12;
+    this.drumBus.connect(send).connect(this.reverb);
+    const len = ctx.sampleRate;
+    this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = this.noise.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  }
+
+  setDrumLevel(v) { this.initDrums(); this.drumBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.3); }
+
+  kick(t, v = 1) {
+    this.initDrums();
+    const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(130, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.9 * v, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    o.connect(g).connect(this.drumBus); o.start(t); o.stop(t + 0.5);
+  }
+
+  noiseHit(t, v, { type = 'highpass', freq = 7000, q = 0.7, decay = 0.05, gain = 0.3 } = {}) {
+    this.initDrums();
+    const ctx = this.ctx, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = this.noise;
+    f.type = type; f.frequency.value = freq; f.Q.value = q;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain * v, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.001, t + decay * 5);
+    src.connect(f).connect(g).connect(this.drumBus);
+    src.start(t, Math.random() * 0.5); src.stop(t + decay * 5 + 0.05);
+  }
+
+  snare(t, v = 1, soft = false) {
+    this.noiseHit(t, v, soft
+      ? { type: 'bandpass', freq: 2500, q: 0.6, decay: 0.06, gain: 0.25 }
+      : { type: 'bandpass', freq: 1900, q: 0.8, decay: 0.045, gain: 0.55 });
+    const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 190;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime((soft ? 0.12 : 0.3) * v, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    o.connect(g).connect(this.drumBus); o.start(t); o.stop(t + 0.15);
+  }
+
+  hat(t, v = 1) { this.noiseHit(t, v, { type: 'highpass', freq: 8000, decay: 0.018, gain: 0.22 }); }
+  shaker(t, v = 1) { this.noiseHit(t, v, { type: 'bandpass', freq: 6500, q: 1.2, decay: 0.03, gain: 0.16 }); }
+  swell(t, dur = 1.5, v = 1) {
+    // soft cymbal swell into the downbeat when the band locks in
+    this.initDrums();
+    const ctx = this.ctx, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = this.noise; src.loop = true;
+    f.type = 'highpass'; f.frequency.value = 5000;
+    g.gain.setValueAtTime(0.0001, t - dur);
+    g.gain.exponentialRampToValueAtTime(0.12 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
+    src.connect(f).connect(g).connect(this.drumBus);
+    src.start(Math.max(ctx.currentTime, t - dur)); src.stop(t + 1.6);
   }
 
   sparkleNote() {
@@ -119,9 +194,9 @@ export class Band {
   }
 
   /** Apply one conductor decision. dt = seconds since the last call. */
-  apply(decision, personality, dt) {
+  apply(decision, personality, dt, { chords = true } = {}) {
     const t = this.ctx.currentTime;
-    if (decision.chord) this.setChord(decision.chord);
+    if (chords && decision.chord) this.setChord(decision.chord);
     this.padBus.gain.setTargetAtTime(decision.pad * 0.9, t, 0.8);
     this.bassBus.gain.setTargetAtTime(decision.bass * 0.9, t, 0.6);
     this.padFilter.frequency.setTargetAtTime(500 + decision.brightness * 2600, t, 1.0);

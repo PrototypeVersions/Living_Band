@@ -145,10 +145,14 @@ export class ChordTracker {
 
   /** Call on every detected note attack (strum or pick). */
   strike(now) {
-    this.strikeAt = now;
     this.lastStrike = now;
+    // A second attack while we are still deciding (an up-strum, a late string) does not move the
+    // change time: the change happened at the first strum. Returns true if a new window opened.
+    if (this.strikeAt !== null && now - this.strikeAt < this.strikeWindow[1]) return false;
+    this.strikeAt = now;
     this.freshCand = null;
     this.freshCount = 0;
+    return true;
   }
 
   /**
@@ -172,19 +176,19 @@ export class ChordTracker {
       const bass = frame.bassPc >= 0 ? frame.bassPc : fresh.bassPc;
       const fb = matchChord(mix, bass);
       // Re-strumming the same chord: if the current chord still explains the new notes nearly as well,
-      // keep it. Only switch when the new chord is clearly better.
-      if (this.current && fb.label !== this.current.label &&
-          fb.score < scoreChord(normalize(mix), this.current.root, this.current.quality, bass) + this.strikeMargin) {
-        this.strikeAt = null;
-        return this.current;
-      }
-      if (fb.score >= this.minScore) {
+      // this frame is no evidence of a change. Keep listening until the window closes: the first frames
+      // after a strum still contain mostly the old chord, so an early "keep" must not end the search.
+      const keep = this.current && fb.label !== this.current.label &&
+        fb.score < scoreChord(normalize(mix), this.current.root, this.current.quality, bass) + this.strikeMargin;
+      if (keep) { this.freshCand = null; this.freshCount = 0; }
+      if (!keep && fb.score >= this.minScore) {
         if (this.freshCand && this.freshCand.label === fb.label) this.freshCount++;
         else { this.freshCand = fb; this.freshCount = 1; }
         // Two-note "power chord" readings need more evidence: a half-heard strum often looks like one.
         const need = fb.quality.iv.length === 2 ? this.freshFrames + 2 : this.freshFrames;
         if (this.freshCount >= need) {
           if (!this.current || this.current.label !== fb.label) {
+            fb.onsetAt = this.strikeAt;
             this.current = fb; this.changedAt = now;
             (this.log ||= []).push({ now, path: 'fast', label: fb.label, mix: [...mix].map((x) => +x.toFixed(2)) });
           }
@@ -219,6 +223,7 @@ export class ChordTracker {
     if (this.candidate && this.candidate.label === best.label) this.candidateCount++;
     else { this.candidate = best; this.candidateCount = 1; }
     if (this.candidateCount >= this.holdFrames) {
+      best.onsetAt = now - 0.03 * this.holdFrames;
       this.current = best; this.changedAt = now;
       (this.log ||= []).push({ now, path: 'slow', label: best.label, mix: [...this.smooth].map((x) => +x.toFixed(2)) });
       if (this.log.length > 100) this.log.shift();

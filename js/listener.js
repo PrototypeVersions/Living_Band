@@ -100,15 +100,15 @@ export class Listener {
   // ---------- Demo guitar: lets you try everything without plugging in ----------
 
   /**
-   * Plays a strummed chord loop into the analysis (and quietly to `audible`, if given),
-   * then a long gap so you can hear the band carry on alone.
+   * Plays a little song into the analysis (and quietly to `audible`, if given): strummed on the
+   * beat with up-strums on the off-beats, a key and tempo change halfway, and rests so you can hear
+   * the band carry on without you.
    */
   startDemo(audible) {
     this.close();
     this.stopDemo();
     const ctx = this.ctx;
     const bus = ctx.createGain();
-    bus.gain.value = 1;
     bus.connect(this.inputGain);
     let monitor = null;
     if (audible) { monitor = ctx.createGain(); monitor.gain.value = 0.35; bus.connect(monitor).connect(audible); }
@@ -117,51 +117,64 @@ export class Listener {
     for (let n = 1; n < 16; n++) imag[n] = 1 / Math.pow(n, 1.3) * (n % 7 === 0 ? 0.3 : 1);
     const wave = ctx.createPeriodicWave(real, imag);
 
-    // E minor, C, G, D — standard open voicings (MIDI notes, low to high)
-    const chords = [
-      [40, 47, 52, 55, 59, 64],
-      [48, 52, 55, 60, 64],
-      [43, 47, 50, 55, 59, 67],
-      [50, 57, 62, 66],
+    const V = { // open voicings, low to high
+      Em: [40, 47, 52, 55, 59, 64], C: [48, 52, 55, 60, 64], G: [43, 47, 50, 55, 59, 67], D: [50, 57, 62, 66],
+      Am: [45, 52, 57, 60, 64], F: [41, 48, 53, 57, 60, 65],
+    };
+    // [chords, bpm, passes, rest bars after]
+    const song = [
+      [['Em', 'C', 'G', 'D'], 96, 3, 6],
+      [['Am', 'F', 'C', 'G'], 104, 3, 8],
     ];
+    const bars = [];
+    for (const [prog, bpm, passes, rest] of song) {
+      for (let p = 0; p < passes; p++) for (const c of prog) bars.push({ chord: c, bpm });
+      for (let r = 0; r < rest; r++) bars.push({ chord: null, bpm });
+    }
+
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) - 0.5;
     const ringing = [];
-    const strum = (notes, at) => {
-      // A new strum replaces the old notes on those strings (they get damped), like a real guitar.
-      while (ringing.length) {
+    const strum = (notes, at, vel, up = false) => {
+      while (ringing.length) { // re-strummed strings replace the old notes
         const old = ringing.pop();
-        if (old.end > at) { old.g.gain.cancelScheduledValues(at); old.g.gain.setTargetAtTime(0, at, 0.03); }
+        if (old.end > at) { old.g.gain.cancelScheduledValues(at); old.g.gain.setTargetAtTime(0, at, 0.02); }
       }
-      notes.forEach((m, i) => {
-        const t = at + i * 0.018;
+      const order = up ? [...notes].reverse().slice(0, 4) : notes;
+      order.forEach((m, i) => {
+        const t = at + i * 0.012;
         const o = ctx.createOscillator(); o.setPeriodicWave(wave); o.frequency.value = midiToFreq(m);
         const g = ctx.createGain();
         g.gain.setValueAtTime(0, t);
-        g.gain.linearRampToValueAtTime(0.09, t + 0.005);
-        g.gain.exponentialRampToValueAtTime(0.002, t + 3.6);
-        o.connect(g).connect(bus); o.start(t); o.stop(t + 3.7);
-        ringing.push({ g, end: t + 3.7 });
+        g.gain.linearRampToValueAtTime(0.09 * vel, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.002, t + 3);
+        o.connect(g).connect(bus); o.start(t); o.stop(t + 3.1);
+        ringing.push({ g, end: t + 3.1 });
       });
     };
-    const barSeconds = 4;
-    let next = ctx.currentTime + 0.1;
-    let step = 0;
-    this.demoEvents = []; // chord-change times, for measuring how fast the band reacts
-    const cycle = chords.length * 2 + 4; // 2 bars per chord, then 4 bars of silence
+
+    this.demoEvents = []; // {t, chord}: bar starts, for measuring how the band lines up
+    let next = ctx.currentTime + 0.2, barIdx = 0;
     const schedule = () => {
       while (next < ctx.currentTime + 1.0) {
-        const pos = step % cycle;
-        if (pos < chords.length * 2) {
-          const ch = chords[Math.floor(pos / 2)];
-          if (pos % 2 === 0) this.demoEvents.push({ t: next, chord: Math.floor(pos / 2) });
-          strum(ch, next);
-          strum(ch, next + barSeconds / 2);
+        const bar = bars[barIdx % bars.length];
+        const beat = 60 / bar.bpm;
+        if (bar.chord) {
+          this.demoEvents.push({ t: next, chord: bar.chord });
+          for (let b = 0; b < 4; b++) {
+            const tb = next + b * beat + rand() * 0.016;
+            strum(V[bar.chord], tb, b === 0 ? 1 : 0.75);
+            if (b === 1 || b === 3) strum(V[bar.chord], tb + beat / 2 + rand() * 0.016, 0.45, true);
+          }
+        } else {
+          this.demoEvents.push({ t: next, chord: null });
         }
-        next += barSeconds;
-        step++;
+        next += 4 * beat;
+        barIdx++;
       }
     };
     schedule();
-    const timer = setInterval(schedule, 250);
+    const timer = setInterval(schedule, 200);
     this.demo = { bus, monitor, timer };
     this.channelCount = 1;
     this.trackLabel = 'Demo guitar';

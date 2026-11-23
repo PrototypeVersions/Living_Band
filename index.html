@@ -30,6 +30,8 @@
         <div><span class="label">Notes</span> <span id="notes">—</span></div>
         <div><span class="label">Bass note</span> <span id="bassNote">—</span></div>
         <div><span class="label">Busyness</span> <span id="density">0.0</span> attacks/s</div>
+        <div><span class="label">Song</span> <span id="songStatus" class="mode">learning</span></div>
+        <div id="songChords" class="chips"></div>
         <div class="layers">
           <div><span class="label">Pad</span><meter id="padMeter" min="0" max="1" value="0"></meter></div>
           <div><span class="label">Bass</span><meter id="bassMeter" min="0" max="1" value="0"></meter></div>
@@ -46,7 +48,7 @@
       <label>Level <meter id="levelMeter" min="-80" max="0" low="-60" high="-12" optimum="-30" value="-80"></meter></label>
       <label>Sensitivity (gate) <input id="gate" type="range" min="-75" max="-25" step="1" value="-52"> <span id="gateVal">-52 dB</span></label>
       <button id="demoBtn" disabled>Try the demo guitar</button>
-      <p class="small">The demo strums Em – C – G – D, then goes quiet so you can hear the band carry on without you.</p>
+      <p class="small">The demo plays Em – C – G – D at 96 bpm, rests, then changes to Am – F – C – G at 104 bpm. Watch the band learn each one, lock in with drums, and carry on through the rests.</p>
     </section>
 
     <section class="panel">
@@ -57,6 +59,10 @@
       <div class="row">
         <button id="enableBtn" disabled>Band: on</button>
         <button id="holdBtn" disabled>Hold: off</button>
+      </div>
+      <div class="row">
+        <button id="drumsBtn" disabled>Drums: on</button>
+        <button id="forgetBtn" disabled>Forget song</button>
       </div>
       <label>Output <select id="outputSelect" disabled></select></label>
       <p id="latencyInfo" class="small"></p>
@@ -69,6 +75,8 @@
         <div><button data-learn="toggleBand" disabled>Learn</button> Band on/off <code data-bind="toggleBand">—</code></div>
         <div><button data-learn="toggleHold" disabled>Learn</button> Hold <code data-bind="toggleHold">—</code></div>
         <div><button data-learn="nextPersonality" disabled>Learn</button> Next personality <code data-bind="nextPersonality">—</code></div>
+        <div><button data-learn="forgetSong" disabled>Learn</button> Forget song / start new <code data-bind="forgetSong">—</code></div>
+        <div><button data-learn="toggleDrums" disabled>Learn</button> Drums on/off <code data-bind="toggleDrums">—</code></div>
       </div>
       <p class="small">Click Learn, then press a footswitch that sends CC or Program Change.</p>
       <p class="small">Last message: <span id="midiLast">—</span></p>

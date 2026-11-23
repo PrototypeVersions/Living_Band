@@ -4,6 +4,8 @@ import { Conductor, PERSONALITIES } from './conductor.js';
 import { Band } from './band.js';
 import { Listener, PITCH_FFT } from './listener.js';
 import { MidiControl } from './midi.js';
+import { Groove } from './groove.js';
+import { sameChord } from './learner.js';
 
 const $ = (id) => document.getElementById(id);
 const SETTINGS_KEY = 'livingband.settings';
@@ -11,7 +13,8 @@ let settings = { gate: -52, volume: 0.7, personality: 'heavenly', inputId: '', c
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); } catch (e) { /* fresh start */ }
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ } };
 
-let ctx, listener, band, conductor, tracker, onsets, midi;
+let ctx, listener, band, conductor, tracker, onsets, midi, groove;
+let lastChordLabel = null;
 let playing = false, belowSince = 0, lastTick = 0, lastFrame = null;
 let prevPitch = null, strikeBefore = null;
 const state = { chord: null, decision: null, levelDb: -100, density: 0, playing: false };
@@ -27,6 +30,7 @@ $('personality').value = settings.personality;
 $('personalityBlurb').textContent = PERSONALITIES[settings.personality].blurb;
 $('gate').value = settings.gate; $('gateVal').textContent = settings.gate + ' dB';
 $('volume').value = settings.volume;
+$('drumsBtn').textContent = 'Drums: ' + (settings.drums !== false ? 'on' : 'off');
 
 // ---------- Start-up ----------
 let running = false, loopTimer = null;
@@ -67,6 +71,9 @@ async function start() {
   conductor = new Conductor(settings.personality);
   tracker = new ChordTracker();
   onsets = new OnsetDetector();
+  groove = new Groove(ctx, band);
+  groove.setPersonality(settings.personality);
+  groove.setDrums(settings.drums !== false);
 
   setRunning(true);
   for (const el of document.querySelectorAll('button:disabled, select:disabled')) {
@@ -159,6 +166,8 @@ $('volume').addEventListener('input', (e) => {
 $('personality').addEventListener('change', (e) => setPersonality(e.target.value));
 $('enableBtn').addEventListener('click', () => doAction('toggleBand'));
 $('holdBtn').addEventListener('click', () => doAction('toggleHold'));
+$('drumsBtn').addEventListener('click', () => doAction('toggleDrums'));
+$('forgetBtn').addEventListener('click', () => doAction('forgetSong'));
 $('demoBtn').addEventListener('click', async () => {
   if (listener.demo) {
     listener.stopDemo();
@@ -177,6 +186,7 @@ function setPersonality(key) {
   $('personality').value = key;
   $('personalityBlurb').textContent = PERSONALITIES[key].blurb;
   conductor && conductor.setPersonality(key);
+  groove && groove.setPersonality(key);
 }
 
 function doAction(action) {
@@ -189,6 +199,12 @@ function doAction(action) {
     conductor.hold = !conductor.hold;
     $('holdBtn').textContent = 'Hold: ' + (conductor.hold ? 'on' : 'off');
     $('holdBtn').classList.toggle('active', conductor.hold);
+  } else if (action === 'forgetSong') {
+    groove.forget();
+  } else if (action === 'toggleDrums') {
+    settings.drums = !(settings.drums !== false); saveSettings();
+    groove.setDrums(settings.drums);
+    $('drumsBtn').textContent = 'Drums: ' + (settings.drums ? 'on' : 'off');
   } else if (action === 'nextPersonality') {
     const keys = Object.keys(PERSONALITIES);
     setPersonality(keys[(keys.indexOf(settings.personality) + 1) % keys.length]);
@@ -233,15 +249,36 @@ function tick() {
   const frame = analyzeSpectrum(pitchMag, ctx.sampleRate, PITCH_FFT);
   lastFrame = frame;
   // On a strum, remember what the spectrum looked like just before it, so we can hear only what's new.
-  if (isOnset && prevPitch) { strikeBefore = prevPitch.slice(); tracker.strike(now); }
+  if (isOnset && prevPitch && tracker.strike(now)) strikeBefore = prevPitch.slice();
   const fresh = strikeBefore && tracker.strikeAt !== null
     ? analyzeSpectrum(newEnergy(pitchMag, strikeBefore), ctx.sampleRate, PITCH_FFT) : null;
   if (tracker.strikeAt === null) strikeBefore = null;
   const chord = tracker.update(frame, playing, now, fresh);
   if (!prevPitch) prevPitch = new Float32Array(pitchMag.length);
   prevPitch.set(pitchMag);
-  const decision = conductor.update({ now, playing, chord, density: onsets.density() });
-  band.apply(decision, conductor.p, dt);
+  const density = onsets.density();
+  if (isOnset) groove.onOnset(now, { lead: density > 3.5 });
+  if (chord && !sameChord(chord, lastChordLabel)) {
+    lastChordLabel = chord;
+    if (!conductor.hold && conductor.enabled) groove.onChordChange(chord, now);
+  }
+  groove.checkMismatch(chord, now);
+  const wasLocked = groove.locked;
+  if (conductor.enabled && !conductor.hold) {
+    groove.schedule(now, { playing, density, outLatency: (ctx.outputLatency || ctx.baseLatency || 0) });
+  }
+  if (groove.justEnded) { groove.justEnded = false; conductor.lastPlaying = -Infinity; } // song finished: rest
+
+  let decision = conductor.update({ now, playing, chord, density });
+  if (groove.locked && conductor.enabled && !conductor.hold) {
+    // Locked in: the groove decides chords and timing; the band plays at full presence.
+    conductor.engagement = 1;
+    conductor.lastPlaying = Math.max(conductor.lastPlaying, now - 2);
+    const p = conductor.p, lead = density > 3.5;
+    decision = { ...decision, mode: groove.status().label, chord: band.chordLabel ? { label: band.chordLabel, pcs: band.pcs } : decision.chord,
+      pad: p.pad * (lead ? 0.5 : 1), bass: Math.max(p.bass, 0.35), sparkle: lead ? 0 : p.sparkle * 0.5, brightness: p.brightness * (lead ? 0.7 : 1) };
+  }
+  band.apply(decision, conductor.p, dt, { chords: !groove.locked });
 
   const heardLabel = chord && chord.label, bandLabel = band.chordLabel;
   if (heardLabel !== state.lastHeard || bandLabel !== state.lastBand) {
@@ -249,7 +286,8 @@ function tick() {
     if (state.changes.length > 200) state.changes.shift();
     state.lastHeard = heardLabel; state.lastBand = bandLabel;
   }
-  state.demoEvents = listener.demoEvents; state.tracker = tracker;
+  state.demoEvents = listener.demoEvents; state.tracker = tracker; state.groove = groove;
+  if (isOnset) { (state.onsetLog ||= []).push(now); if (state.onsetLog.length > 400) state.onsetLog.shift(); }
   Object.assign(state, { chord, decision, levelDb, density: onsets.density(), playing, engagement: conductor.engagement });
   render(frame, chord, decision, levelDb);
 }
@@ -298,6 +336,10 @@ function render(frame, chord, decision, levelDb) {
   $('notes').textContent = state.playing && frame.notes.length ? frame.notes.map((n) => midiName(n.midi)).join('  ') : '—';
   $('bassNote').textContent = state.playing && frame.bassMidi >= 0 ? midiName(frame.bassMidi) : '—';
   $('density').textContent = state.density.toFixed(1);
+  const st = groove.status();
+  $('songStatus').textContent = st.label;
+  const chips = st.chords.map((c, i) => `<span class="chip${i === st.pos ? ' now' : ''}">${c}</span>`).join('');
+  if ($('songChords').innerHTML !== chips) $('songChords').innerHTML = chips || '<span class="small">Play a progression twice round and the band will lock in.</span>';
   $('padMeter').value = decision.pad;
   $('bassMeter').value = decision.bass;
   $('engMeter').value = conductor.engagement;
