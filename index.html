@@ -3,90 +3,130 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Living Band — prototype 0.1</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%276%27 fill=%27%238fb8ff%27/%3E%3C/svg%3E">
+  <title>Living Band: turn your riff into a song</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%276%27 fill=%27%23ffb86b%27/%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <header>
-    <div>
-      <h1>Living Band</h1>
-      <p class="sub">Prototype 0.1. The band listens to your guitar and follows you.</p>
+  <header class="top">
+    <div class="brand">
+      <span class="dot"></span>
+      <div>
+        <h1>Living Band</h1>
+        <p>Play a few chords. Get a whole song to jam over.</p>
+      </div>
     </div>
-    <button id="startBtn" class="primary">Start audio</button>
+    <ol class="steps" id="steps">
+      <li data-step="record" class="on">Play</li>
+      <li data-step="review">Check</li>
+      <li data-step="style">Vibe</li>
+      <li data-step="jam">Jam</li>
+    </ol>
   </header>
 
   <main>
-    <section class="stage">
-      <div class="wheelWrap">
-      <canvas id="wheel" width="560" height="560" aria-label="Pitch wheel showing the notes being heard"></canvas>
-      <div class="centre">
-        <div id="chordName" class="chord">—</div>
-        <div id="chordConf" class="small">play something</div>
-      </div>
-      </div>
-      <div class="status">
-        <div><span class="label">Band</span> <span id="mode" class="mode">waiting</span></div>
-        <div><span class="label">Notes</span> <span id="notes">—</span></div>
-        <div><span class="label">Bass note</span> <span id="bassNote">—</span></div>
-        <div><span class="label">Busyness</span> <span id="density">0.0</span> attacks/s</div>
-        <div><span class="label">Song</span> <span id="songStatus" class="mode">learning</span></div>
-        <div id="songChords" class="chips"></div>
-        <div class="layers">
-          <div><span class="label">Pad</span><meter id="padMeter" min="0" max="1" value="0"></meter></div>
-          <div><span class="label">Bass</span><meter id="bassMeter" min="0" max="1" value="0"></meter></div>
-          <div><span class="label">Band in</span><meter id="engMeter" min="0" max="1" value="0"></meter></div>
+    <!-- 1. Record -->
+    <section class="card" id="view-record">
+      <h2>Play your riff</h2>
+      <p class="lead">Play a chord progression <strong>two or three times round</strong> at a steady tempo, then press stop. Strum, pick, keep it simple or fancy. The band will learn it.</p>
+      <div class="recorder">
+        <button id="recBtn" class="rec" aria-label="Record"><span></span></button>
+        <div class="rec-info">
+          <div id="recTime" class="rec-time">0:00</div>
+          <div class="level"><div id="level"></div></div>
+          <div id="recHint" class="muted">Press the red button to start recording.</div>
         </div>
       </div>
+      <details class="settings" id="inputSettings">
+        <summary>Input settings</summary>
+        <label>Input <select id="inputSelect"><option>Press record once to list inputs</option></select></label>
+        <label>Channel <select id="channelSelect"></select></label>
+        <p class="muted small" id="channelInfo">Pick the channel your guitar is on. A clean sound (little reverb or delay) works best.</p>
+      </details>
+      <div class="or"><span>or</span></div>
+      <button id="demoBtn" class="ghost">Try it with a demo riff</button>
+      <p id="recError" class="error" hidden></p>
     </section>
 
-    <section class="panel">
-      <h2>Input</h2>
-      <label>Device <select id="inputSelect" disabled><option>Press “Start audio” first</option></select></label>
-      <label>Channel <select id="channelSelect" disabled></select></label>
-      <p id="channelInfo" class="small"></p>
-      <label>Level <meter id="levelMeter" min="-80" max="0" low="-60" high="-12" optimum="-30" value="-80"></meter></label>
-      <label>Sensitivity (gate) <input id="gate" type="range" min="-75" max="-25" step="1" value="-52"> <span id="gateVal">-52 dB</span></label>
-      <button id="demoBtn" disabled>Try the demo guitar</button>
-      <p class="small">The demo plays Em – C – G – D at 96 bpm, rests, then changes to Am – F – C – G at 104 bpm. Watch the band learn each one, lock in with drums, and carry on through the rests.</p>
-    </section>
-
-    <section class="panel">
-      <h2>Band</h2>
-      <label>Personality <select id="personality"></select></label>
-      <p id="personalityBlurb" class="small"></p>
-      <label>Volume <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7"></label>
+    <!-- 2. Review -->
+    <section class="card" id="view-review" hidden>
+      <h2>Here's what I heard</h2>
+      <p class="lead">Tap a chord to fix it. If the tempo feels half or double, use ½ or ×2.</p>
+      <div class="facts">
+        <div class="fact"><span class="k">Tempo</span>
+          <span class="v"><button id="bpmHalf" class="mini">½</button><input id="bpmInput" type="number" min="40" max="220" step="1"> bpm<button id="bpmDouble" class="mini">×2</button></span></div>
+        <div class="fact"><span class="k">Time</span><span class="v" id="timeSig">4/4</span></div>
+        <div class="fact"><span class="k">Key</span><span class="v" id="keyName">—</span></div>
+        <div class="fact"><span class="k">Loop</span><span class="v" id="loopInfo">—</span></div>
+      </div>
+      <div id="bars" class="bars"></div>
       <div class="row">
-        <button id="enableBtn" disabled>Band: on</button>
-        <button id="holdBtn" disabled>Hold: off</button>
+        <button id="hearBtn" class="ghost">▶ Hear my riff on the beat</button>
+        <button id="redoBtn" class="ghost">↺ Record again</button>
+        <button id="toStyleBtn" class="primary">Sounds right →</button>
       </div>
-      <div class="row">
-        <button id="drumsBtn" disabled>Drums: on</button>
-        <button id="forgetBtn" disabled>Forget song</button>
-      </div>
-      <label>Output <select id="outputSelect" disabled></select></label>
-      <p id="latencyInfo" class="small"></p>
     </section>
 
-    <section class="panel">
-      <h2>Foot control (MIDI)</h2>
-      <p id="midiStatus" class="small">Starts with audio.</p>
-      <div class="learn">
-        <div><button data-learn="toggleBand" disabled>Learn</button> Band on/off <code data-bind="toggleBand">—</code></div>
-        <div><button data-learn="toggleHold" disabled>Learn</button> Hold <code data-bind="toggleHold">—</code></div>
-        <div><button data-learn="nextPersonality" disabled>Learn</button> Next personality <code data-bind="nextPersonality">—</code></div>
-        <div><button data-learn="forgetSong" disabled>Learn</button> Forget song / start new <code data-bind="forgetSong">—</code></div>
-        <div><button data-learn="toggleDrums" disabled>Learn</button> Drums on/off <code data-bind="toggleDrums">—</code></div>
+    <!-- 3. Style -->
+    <section class="card" id="view-style" hidden>
+      <h2>Pick a vibe</h2>
+      <div id="styles" class="styles"></div>
+      <div class="row">
+        <div class="seg" id="lengthSeg">
+          <button data-len="short">Short · ~1½ min</button>
+          <button data-len="full" class="on">Full song · ~3 min</button>
+        </div>
+        <button id="buildBtn" class="primary">Build my song →</button>
       </div>
-      <p class="small">Click Learn, then press a footswitch that sends CC or Program Change.</p>
-      <p class="small">Last message: <span id="midiLast">—</span></p>
+      <p id="loadInfo" class="muted small"></p>
+    </section>
+
+    <!-- 4. Jam -->
+    <section class="card" id="view-jam" hidden>
+      <div class="jam-head">
+        <div>
+          <h2 id="songTitle">Your song</h2>
+          <p class="muted" id="songMeta"></p>
+        </div>
+        <div class="now">
+          <div class="now-label">now</div><div id="nowChord" class="now-chord">—</div>
+          <div class="now-label">next</div><div id="nextChord" class="next-chord">—</div>
+        </div>
+      </div>
+      <div id="timeline" class="timeline"></div>
+      <div class="transport">
+        <button id="playBtn" class="play" aria-label="Play">▶</button>
+        <button id="loopBtn" class="ghost">⟲ Loop this section</button>
+        <span id="clock" class="clock">0:00 / 0:00</span>
+        <span id="sectionName" class="section-name"></span>
+      </div>
+      <div class="jam-grid">
+        <div class="panel">
+          <h3>Solo ideas</h3>
+          <p id="scaleTip"></p>
+        </div>
+        <div class="panel">
+          <h3>Mix</h3>
+          <div id="mixer" class="mixer"></div>
+        </div>
+        <div class="panel">
+          <h3>Take it with you</h3>
+          <button id="exportBtn" class="ghost">⬇ Download song (WAV)</button>
+          <button id="stemsBtn" class="ghost">⬇ Download parts (stems)</button>
+          <p class="muted small" id="exportInfo">Drop the parts into REAPER or GarageBand on separate tracks.</p>
+        </div>
+      </div>
+      <div class="row">
+        <button id="restyleBtn" class="ghost">← Try another vibe</button>
+        <button id="newRiffBtn" class="ghost">↺ New riff</button>
+      </div>
     </section>
   </main>
 
   <footer>
-    <p class="small">Use headphones. Monitor your guitar through your amp or Tone Master Pro as usual. Only the band comes from this page. Keep this tab in front while you play. Chrome or Edge recommended.</p>
+    <p class="muted small">Use headphones and hear your guitar through your amp as usual. Works best in Chrome or Edge. Instrument samples: FluidR3 GM (CC BY 3.0) and Google web-audio-samples (Apache 2.0). See <a href="assets/samples/CREDITS.md">credits</a>.</p>
   </footer>
 
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

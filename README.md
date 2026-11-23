@@ -1,59 +1,39 @@
 # Living Band
 
-An AI musical companion that listens to your guitar and plays along with *you*, instead of you playing along with a backing track.
+**Play a few chords. Get a whole song to jam over.**
 
-**Prototype 0.2: learn and lock.** Play a chord progression around twice. The band learns the chords, the chord lengths and your tempo, then **locks in**: drums and bass come in, and from then on the band plays each chord *on the downbeat* instead of reacting to it. It keeps listening the whole time:
-
-- **Your tempo leads.** Strums that land near the beat gently pull its timing toward yours.
-- **Change the song and it re-learns.** Strum a chord that doesn't fit, and it keeps the beat going, follows you, and locks onto the new progression.
-- **Stop playing and it carries on.** It keeps your song going (about 16 bars) so you can solo over it or just listen, then ends on the first chord.
-- **Personalities play differently.** Heavenly: soft half-time kit, shaker, held bass. Minimalist: barely-there shaker and bass. Deep: full kit, pulsing bass. **Drums** and **Forget song** buttons (and footswitches) are in the Band panel.
-
-Before it locks in, it behaves like prototype 0.1: It listens, works out what chord you're on, and brings in a pad and then a bass that follow your harmony. It backs off when you play busy lead lines. When you stop, it carries on alone, holding your last chord and then cycling through the chords you just played, before it fades out.
-
-## Try it
-
-Open the GitHub Pages site in **Chrome or Edge**, press **Start audio**, and allow microphone access.
-
-- **No guitar handy?** Press **Try the demo guitar**. It strums Em – C – G – D, then goes quiet so you can hear the band develop without you.
-- **With your guitar:** keep monitoring your guitar through your amp or Tone Master Pro as normal (zero latency). Only the band comes from this page. Use headphones so the band isn't picked up by a mic.
-  - Pick your interface under **Input → Device** and the right **Channel**. A clean or dry signal gives the most reliable chord detection.
-  - The page reports how many channels the browser exposes. If a Tone Master Pro shows only 2, its dry channel 3 can't be reached from a browser. Use a clean preset on channels 1–2 for now (see *Roadmap*).
-  - Adjust **Sensitivity** until the level meter crosses the gate only when you're actually playing.
-- **Foot control:** any MIDI device that sends CC or Program Change can toggle the band, hold the current chord, or switch personality. Click **Learn**, then press the switch.
+Record a chord progression on your guitar, and Living Band turns it into a complete arranged backing track, with drums, bass, keys and pads, built around *your own playing*. Then improvise over it, loop sections, and export it.
 
 ## How it works
 
-```
-Learn and lock: chord changes (timed from the strum that started them) → repeating cycle → beat grid
-                (chord lengths snapped to bar lines) → look-ahead scheduler plays the grid, sent early by the
-                output latency so it lands with your guitar, nudged by your strums.
+1. **Play.** Hit record and play your progression two or three times round at a steady tempo. (Or try the demo riff.)
+2. **Check.** It works out the tempo, time signature, key, the chord in each bar (including half-bar changes) and how long your loop is. Tap any chord to fix it; use ½ / ×2 if the tempo is off by a factor of two. *Hear my riff on the beat* plays your take back on a click.
+3. **Vibe.** Pick a style (**Heavenly**, **Drive**, **Lo-fi**, **Ballad**) and a length.
+4. **Jam.** You get a full song: intro → verse → build → chorus → verse 2 → breakdown → bridge (new chords in your key) → chorus → outro. **Your riff is the rhythm guitar**: your take is cut into single beats and re-laid on the grid, so it stays tight at the song's tempo. The page shows the current and next chord and suggests scales to solo with. Loop any section, adjust the mix, and download the song or separate parts (stems) for REAPER or GarageBand.
 
-guitar → [listen]  pitch spectrum (16k FFT) → note peaks → overtone suppression → chroma → chord templates + smoothing
-                   small FFT → spectral flux → note attacks per second ("busyness")
-       → [decide]  Conductor: engagement ramps in, bass waits until halfway, makes room for busy playing,
-                   sustains → develops through your recent chords → rests when you stop
-       → [play]    Web Audio: 4-voice detuned-saw pad with smooth voice leading, sine/triangle bass,
-                   bell sparkles, convolution reverb
-```
+Everything runs in the browser (Chrome or Edge). No account, no upload.
+
+## Under the hood
 
 | File | Role |
 |---|---|
-| `js/dsp.js` | Pure listening maths: spectrum → notes → chord, chord tracker, onset detector, voice leading |
-| `js/conductor.js` | Band personalities and the musical decisions (before lock-in) |
-| `js/learner.js` | Spots a repeating progression; estimates beat, bar, chord lengths and downbeat |
-| `js/groove.js` | Locked-in playing: on-time chords, drums, bass, tempo following, re-learning, ending |
-| `js/band.js` | The synthesizers |
-| `js/listener.js` | Audio input, channel selection, demo guitar |
-| `js/midi.js` | MIDI foot control with learn |
-| `js/main.js` | Wiring and display |
+| `js/analysis.js` | Offline riff analysis: onset envelope → tempo (autocorrelation) → beat tracking (dynamic programming) → per-beat chroma → bar lines and chords (tries 4/4 and 3/4 at every offset; splits half-bar changes) → loop length → strum-aligned cut points for your take |
+| `js/dsp.js` | Pitch peaks, overtone suppression, chord templates, voice leading |
+| `js/arranger.js` | Key detection, bridge progression, song structure and energy curve, every part per style (drums, fills, bass lines, piano/Rhodes voicings, pads, your riff) |
+| `js/engine.js` | Sampled instruments (re-pitched, crossfaded sustain for pads), your riff's beat slices, reverb and bus compression, live player with section looping, offline rendering and WAV export |
+| `js/recorder.js` | Input device and channel selection, level meter, AudioWorklet capture |
+| `js/demo-riff.js` | Synthetic strummed guitar for the demo and the tests |
+| `js/app.js` | The four-step interface |
 
-No build step and no dependencies. Run the tests with `npm test`.
+Tests: `npm test` (riff analysis on synthetic recordings at different tempos, chord lengths, half-bar changes, waltz time, tempo drift, sparse strumming; key detection; arrangement structure).
 
-## Roadmap
+Instrument samples: see `assets/samples/CREDITS.md`.
 
-1. **Responsive ambient companion.** Done (0.1).
-2. **Interactive rhythm section.** Learn-and-lock with drums and bass is done (0.2). Next: fills at the end of the progression, dynamics that follow your playing more closely, better drum sounds.
-3. **Creative co-musician.** Call-and-response phrases, musical memory across sessions, adaptive arrangements, automatic recording and stem export.
+## Ideas for next
 
-If the browser can't see a multichannel interface's dry channel, or the latency feels too high for rhythm, the plan is to wrap the same engine in a small desktop app (Electron) or add a tiny audio-bridge helper. The music logic stays the same.
+- An AI arranger (Claude) for richer song structures and chord substitutions, with your own API key
+- AI-generated textures (Lyria RealTime / Magenta RealTime 2) locked to the song's key and tempo
+- More styles and drum kits; humanised timing; count-in and click while recording
+- Desktop helper for multichannel interfaces (e.g. the Tone Master Pro's dry channel)
+
+The earlier live "follow me" prototype is in the git history (tag `v0.2-live-follow`).
