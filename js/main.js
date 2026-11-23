@@ -27,10 +27,36 @@ $('gate').value = settings.gate; $('gateVal').textContent = settings.gate + ' dB
 $('volume').value = settings.volume;
 
 // ---------- Start-up ----------
-$('startBtn').addEventListener('click', start);
+let running = false, loopTimer = null;
+$('startBtn').addEventListener('click', () => (running ? stop() : start()));
+
+function setRunning(on) {
+  running = on;
+  $('startBtn').textContent = on ? 'Stop audio' : 'Start audio';
+  $('startBtn').classList.toggle('primary', !on);
+}
+
+/** Stop everything: release the input (mic light goes off), stop the demo, silence the band. */
+async function stop() {
+  clearInterval(loopTimer); loopTimer = null;
+  listener.stopDemo();
+  listener.close();
+  $('demoBtn').textContent = 'Try the demo guitar';
+  await ctx.suspend();
+  setRunning(false);
+  $('mode').textContent = 'stopped';
+  $('channelInfo').textContent = 'Audio stopped. Press “Start audio” to listen again.';
+}
 
 async function start() {
-  if (ctx) { await ctx.resume(); return; }
+  if (ctx) {
+    await ctx.resume();
+    try { await openInput(settings.inputId); } catch (e) { $('channelInfo').textContent = 'Could not open an input (' + e.message + ').'; }
+    lastTick = 0;
+    loopTimer = setInterval(tick, 30);
+    setRunning(true);
+    return;
+  }
   ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
   await ctx.resume();
   listener = new Listener(ctx);
@@ -40,8 +66,7 @@ async function start() {
   tracker = new ChordTracker();
   onsets = new OnsetDetector();
 
-  $('startBtn').textContent = 'Audio running';
-  $('startBtn').disabled = true;
+  setRunning(true);
   for (const el of document.querySelectorAll('button:disabled, select:disabled')) {
     if (el.id !== 'startBtn' && el.id !== 'channelSelect') el.disabled = false;
   }
@@ -54,7 +79,7 @@ async function start() {
   }
   showLatency();
   setupMidi();
-  setInterval(tick, 30);
+  loopTimer = setInterval(tick, 30);
 }
 
 async function fillDevices() {
