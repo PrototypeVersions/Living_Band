@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Living Band — prototype 0.1</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%276%27 fill=%27%238fb8ff%27/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Living Band</h1>
+      <p class="sub">Prototype 0.1. The band listens to your guitar and follows you.</p>
+    </div>
+    <button id="startBtn" class="primary">Start audio</button>
+  </header>
+
+  <main>
+    <section class="stage">
+      <div class="wheelWrap">
+      <canvas id="wheel" width="560" height="560" aria-label="Pitch wheel showing the notes being heard"></canvas>
+      <div class="centre">
+        <div id="chordName" class="chord">—</div>
+        <div id="chordConf" class="small">play something</div>
+      </div>
+      </div>
+      <div class="status">
+        <div><span class="label">Band</span> <span id="mode" class="mode">waiting</span></div>
+        <div><span class="label">Notes</span> <span id="notes">—</span></div>
+        <div><span class="label">Bass note</span> <span id="bassNote">—</span></div>
+        <div><span class="label">Busyness</span> <span id="density">0.0</span> attacks/s</div>
+        <div class="layers">
+          <div><span class="label">Pad</span><meter id="padMeter" min="0" max="1" value="0"></meter></div>
+          <div><span class="label">Bass</span><meter id="bassMeter" min="0" max="1" value="0"></meter></div>
+          <div><span class="label">Band in</span><meter id="engMeter" min="0" max="1" value="0"></meter></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Input</h2>
+      <label>Device <select id="inputSelect" disabled><option>Press “Start audio” first</option></select></label>
+      <label>Channel <select id="channelSelect" disabled></select></label>
+      <p id="channelInfo" class="small"></p>
+      <label>Level <meter id="levelMeter" min="-80" max="0" low="-60" high="-12" optimum="-30" value="-80"></meter></label>
+      <label>Sensitivity (gate) <input id="gate" type="range" min="-75" max="-25" step="1" value="-52"> <span id="gateVal">-52 dB</span></label>
+      <button id="demoBtn" disabled>Try the demo guitar</button>
+      <p class="small">The demo strums Em – C – G – D, then goes quiet so you can hear the band carry on without you.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Band</h2>
+      <label>Personality <select id="personality"></select></label>
+      <p id="personalityBlurb" class="small"></p>
+      <label>Volume <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7"></label>
+      <div class="row">
+        <button id="enableBtn" disabled>Band: on</button>
+        <button id="holdBtn" disabled>Hold: off</button>
+      </div>
+      <label>Output <select id="outputSelect" disabled></select></label>
+      <p id="latencyInfo" class="small"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Foot control (MIDI)</h2>
+      <p id="midiStatus" class="small">Starts with audio.</p>
+      <div class="learn">
+        <div><button data-learn="toggleBand" disabled>Learn</button> Band on/off <code data-bind="toggleBand">—</code></div>
+        <div><button data-learn="toggleHold" disabled>Learn</button> Hold <code data-bind="toggleHold">—</code></div>
+        <div><button data-learn="nextPersonality" disabled>Learn</button> Next personality <code data-bind="nextPersonality">—</code></div>
+      </div>
+      <p class="small">Click Learn, then press a footswitch that sends CC or Program Change.</p>
+      <p class="small">Last message: <span id="midiLast">—</span></p>
+    </section>
+  </main>
+
+  <footer>
+    <p class="small">Use headphones. Monitor your guitar through your amp or Tone Master Pro as usual. Only the band comes from this page. Keep this tab in front while you play. Chrome or Edge recommended.</p>
+  </footer>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

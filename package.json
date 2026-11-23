@@ -1,0 +1,6 @@
+{
+  "name": "living-band",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test tests/" }
+}
