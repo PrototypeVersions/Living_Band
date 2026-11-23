@@ -36,4 +36,4 @@ Instrument samples: see `assets/samples/CREDITS.md`.
 - More styles and drum kits; humanised timing; count-in and click while recording
 - Desktop helper for multichannel interfaces (e.g. the Tone Master Pro's dry channel)
 
-The earlier live "follow me" prototype is in the git history (tag `v0.2-live-follow`).
+The earlier live "follow me" prototype is in the git history (commit `f1cf7bd`).
