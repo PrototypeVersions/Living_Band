@@ -122,7 +122,11 @@ export function arrange(analysis, { style = 'heavenly', length = 'full', seed = 
 
   const sections = [];
   let beat = 0;
-  for (const tpl of TEMPLATES[length] || TEMPLATES.full) {
+  const withRiff = analysisHasRiff(analysis);
+  for (const tpl0 of TEMPLATES[length] || TEMPLATES.full) {
+    // Without your recording in the mix, the band carries the intro and breakdown on its own: lift them a
+    // little so there's movement (keys and bass come in) rather than a bare pad.
+    const tpl = !withRiff && tpl0.energy < 0.45 ? { ...tpl0, energy: tpl0.name === 'Breakdown' ? 0.35 : 0.46 } : tpl0;
     const loops = Math.max(1, Math.round(tpl.loops * scale));
     const prog = tpl.prog === 'bridge' ? bridge : main;
     const bars = [];

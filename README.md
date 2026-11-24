@@ -9,7 +9,7 @@ Record a chord progression on your guitar, and Living Band turns it into a compl
 1. **Play.** Hit record and play your progression two or three times round at a steady tempo. (Or try the demo riff.)
 2. **Check.** It works out the tempo, time signature, key, the chord in each bar (including half-bar changes) and how long your loop is. Tap any chord to fix it; use ½ / ×2 if the tempo is off by a factor of two. *Hear my riff on the beat* plays your take back on a click.
 3. **Vibe.** Pick a style (**Heavenly**, **Drive**, **Lo-fi**, **Ballad**) and a length.
-4. **Jam.** You get a full song: intro → verse → build → chorus → verse 2 → breakdown → bridge (new chords in your key) → chorus → outro. **Your riff is the rhythm guitar**: your take is cut into single beats and re-laid on the grid, so it stays tight at the song's tempo. The page shows the current and next chord and suggests scales to solo with. Loop any section, adjust the mix, and download the song or separate parts (stems) for REAPER or GarageBand.
+4. **Jam.** You get a full song: intro → verse → build → chorus → verse 2 → breakdown → bridge (new chords in your key) → chorus → outro. The band plays without your recording by default, so you can play live over it. Switch on **Include my recorded riff** to add your take as the rhythm guitar (cut into single beats and re-laid on the grid). The page shows the current and next chord and suggests scales to solo with. Loop any section, adjust the mix, and download the song or separate parts (stems) for REAPER or GarageBand.
 
 Everything runs in the browser (Chrome or Edge). No account, no upload.
 

@@ -111,3 +111,5 @@ footer { max-width: 980px; margin: 0 auto; padding: 0 20px 30px; }
 .busy { position: fixed; inset: 0; background: rgba(10, 8, 12, 0.6); display: grid; place-items: center; z-index: 10; }
 .busy div { background: var(--card); border: 1px solid var(--line); padding: 20px 28px; border-radius: 12px; }
 @media (max-width: 760px) { .jam-grid { grid-template-columns: 1fr; } .top { padding: 16px; } .card { padding: 20px; } }
+.check { display: flex; align-items: center; gap: 8px; color: var(--text); margin: 0 0 10px; }
+.check input { width: 16px; height: 16px; }

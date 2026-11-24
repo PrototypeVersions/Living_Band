@@ -59,3 +59,11 @@ test('two-bar loops get more repeats; eight-bar loops fewer', () => {
   assert.equal(two.sections[1].loops, 4);
   assert.equal(eight.sections[1].loops, 1);
 });
+
+test('without your recording, there are no riff slices and the intro gets keys and bass', () => {
+  const song = arrange({ ...analysis([bar('Em'), bar('C'), bar('G'), bar('D')]), riff: null }, { style: 'heavenly', length: 'full' });
+  assert.equal(song.events.filter((e) => e.track === 'riff').length, 0);
+  const intro = song.sections[0];
+  const inIntro = (track) => song.events.filter((e) => e.track === track && e.beat < intro.beats).length;
+  assert.ok(inIntro('keys') > 0 && inIntro('bass') > 0);
+});

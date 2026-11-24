@@ -6,7 +6,7 @@ import { loadStyle, Player, renderSong, wavBlob, TRACKS, DEFAULT_MIX } from './e
 import { NOTE_NAMES } from './dsp.js';
 
 const $ = (id) => document.getElementById(id);
-const S = { ctx: null, recorder: null, analysis: null, riff: null, song: null, bank: null, style: 'heavenly', length: 'full' };
+const S = { ctx: null, recorder: null, analysis: null, riff: null, song: null, bank: null, style: 'heavenly', length: 'full', includeRiff: false };
 window.livingBand = S; // for debugging and tests
 
 // ---------- views ----------
@@ -235,14 +235,30 @@ async function buildSong() {
   try {
     S.bank = await loadStyle(S.ctx, S.style, (p) => busy(`Loading the band… ${Math.round(p * 100)}%`));
   } catch (e) { busy(); $('loadInfo').textContent = 'Could not load sounds: ' + e.message; return; }
-  const analysis = { ...S.analysis, riff: S.riff ? { beatTimes: S.riff.beatTimes } : null };
-  S.song = arrange(analysis, { style: S.style, length: S.length, bpm: S.bpm });
-  S.player.setSong(S.song, S.bank, S.riff);
-  S.chordTimeline = chordTimeline(S.song);
+  arrangeSong();
   busy();
   renderJam();
   show('jam');
 }
+
+/** (Re)arrange with the current choices. Your recording is left out unless you switch it on. */
+function arrangeSong() {
+  const useRiff = S.includeRiff && S.riff;
+  const analysis = { ...S.analysis, riff: useRiff ? { beatTimes: S.riff.beatTimes } : null };
+  S.song = arrange(analysis, { style: S.style, length: S.length, bpm: S.bpm });
+  S.player.setSong(S.song, S.bank, useRiff ? S.riff : null);
+  S.chordTimeline = chordTimeline(S.song);
+}
+
+$('riffToggle').addEventListener('change', (e) => {
+  S.includeRiff = e.target.checked;
+  const wasPlaying = S.player.playing, pos = S.player.position;
+  arrangeSong();
+  renderJam();
+  S.player.position = pos;
+  if (wasPlaying) S.player.play(pos);
+  onBeat(pos);
+});
 
 // ---------- 4. jam ----------
 function chordTimeline(song) {
@@ -270,6 +286,8 @@ function renderJam() {
   const song = S.song, spb = 60 / song.bpm;
   $('songTitle').textContent = `${STYLES[song.style].name} in ${song.keyName}`;
   $('songMeta').textContent = `${Math.round(song.bpm)} bpm · ${song.beatsPerBar}/4 · ${fmt(song.lengthBeats * spb)} · built from your ${S.analysis.progression.length}-bar riff`;
+  $('riffToggle').checked = !!S.includeRiff;
+  $('riffToggle').disabled = !S.riff;
   $('scaleTip').innerHTML = scaleTip(song.key);
   const tl = $('timeline');
   tl.innerHTML = '<div class="playhead" id="playhead"></div>';
@@ -287,7 +305,7 @@ function renderJam() {
   $('mixer').innerHTML = '';
   const names = { riff: 'Your riff', drums: 'Drums', bass: 'Bass', keys: 'Keys', pad: 'Pads' };
   for (const t of TRACKS) {
-    if (t === 'riff' && !S.riff) continue;
+    if (t === 'riff' && !(S.includeRiff && S.riff)) continue;
     const l = document.createElement('label');
     l.innerHTML = `<span>${names[t]}</span><input type="range" min="0" max="1.2" step="0.01" value="${S.player.mix[t] ?? DEFAULT_MIX[t]}">`;
     l.querySelector('input').addEventListener('input', (e) => S.player.setMix(t, Number(e.target.value)));
@@ -349,7 +367,7 @@ const fileBase = () => `living-band-${STYLES[S.song.style].name.toLowerCase()}-$
 
 $('exportBtn').addEventListener('click', async () => {
   busy('Rendering your song… (this can take a minute)');
-  try { download(wavBlob(await renderSong(S.song, S.bank, S.riff, { mix: S.player.mix })), fileBase() + '.wav'); }
+  try { download(wavBlob(await renderSong(S.song, S.bank, S.includeRiff ? S.riff : null, { mix: S.player.mix })), fileBase() + '.wav'); }
   catch (e) { $('exportInfo').textContent = 'Export failed: ' + e.message; }
   busy();
 });
@@ -357,9 +375,9 @@ $('stemsBtn').addEventListener('click', async () => {
   const names = { riff: 'your-riff', drums: 'drums', bass: 'bass', keys: 'keys', pad: 'pads' };
   try {
     for (const t of TRACKS) {
-      if (t === 'riff' && !S.riff) continue;
+      if (t === 'riff' && !(S.includeRiff && S.riff)) continue;
       busy(`Rendering ${names[t]}…`);
-      download(wavBlob(await renderSong(S.song, S.bank, S.riff, { only: t })), `${fileBase()}-${names[t]}.wav`);
+      download(wavBlob(await renderSong(S.song, S.bank, S.includeRiff ? S.riff : null, { only: t })), `${fileBase()}-${names[t]}.wav`);
     }
     $('exportInfo').textContent = 'All parts start at the same moment: line them up at zero in your DAW.';
   } catch (e) { $('exportInfo').textContent = 'Export failed: ' + e.message; }
